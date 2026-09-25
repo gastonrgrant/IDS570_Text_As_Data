@@ -1,0 +1,364 @@
+---
+title: "week-04-basics"
+author: "Gaston Grant"
+date: "2026-09-23"
+output: html_document
+---
+
+
+##Part 1
+```{r}
+library(tibble)
+library(dplyr)
+library(readr)
+library(stringr)
+library(tidytext)
+library(tidyr)
+library(ggplot2)
+library(quanteda)
+library(quanteda.textstats)
+
+```
+
+
+```{r}
+
+txt_circle <- read_file("texts/A07594__Circle_of_Commerce.txt")
+
+txt_free <- read_file("texts/B14801__Free_Trade.txt")
+
+txt_Malynes <- read_file("texts/A06785.txt")
+
+```
+
+```{r}
+text_tbl <- tibble(
+  doc_title = c(
+    "Circle of Commerce",
+    "Free Trade",
+    "Malynes Text"
+  ),
+  text = c(
+    txt_circle,
+    txt_free,
+    txt_Malynes
+  )
+)
+
+text_tbl
+```
+```{r}
+text_tbl <- text_tbl %>%
+  mutate(
+    text = str_replace_all(text, "ſ", "s"),
+    text = str_to_lower(text)
+  )
+text_tbl
+```
+```{r}
+tokens_tbl <- text_tbl %>%
+  unnest_tokens(
+    output = word,
+    input = text
+  )
+tokens_tbl
+```
+```{r}
+tokens_tbl <- tokens_tbl %>%
+  anti_join(stop_words, by = "word")
+
+
+custom_stop <- c(
+  "vnto", "haue", "doo", "hath", "bee", "ye", "thee", "hee",
+  "shall", "hast", "doe", "beene", "thereof", "thus"
+)
+
+tokens_tbl <- tokens_tbl %>%
+  filter(!word %in% custom_stop)
+tokens_tbl
+```
+
+```{r}
+
+raw_tokens <- tokens_tbl %>%
+  filter(doc_title %in% c("Circle of Commerce", "Free Trade"))
+
+raw_tokens
+```
+```{r}
+bing <- get_sentiments("bing")
+
+raw_sentiments <- raw_tokens %>%
+  inner_join(bing, by = "word")
+raw_sentiments
+```
+```{r}
+sentiment_summary <- raw_sentiments %>%
+  group_by(doc_title) %>%
+  summarise(
+    positive_words = sum(sentiment == "positive"),
+    negative_words = sum(sentiment == "negative"),
+    net_sentiment = positive_words - negative_words,
+    .groups = "drop"
+  )
+sentiment_summary
+```
+## Part 2
+
+```{r}
+corp <- corpus(
+  setNames(text_tbl$text, text_tbl$doc_title)
+)
+corp
+```
+```{r}
+toks <- tokens(
+  corp,
+  remove_punct = TRUE,
+  remove_numbers = TRUE,
+  remove_symbols = TRUE
+)
+toks
+```
+```{r}
+toks <- tokens_remove(
+  toks,
+  pattern = c(stopwords("en"), custom_stop)
+)
+toks
+```
+```{r}
+dfm_mat <- dfm(toks)
+
+dfm_mat
+```
+```{r}
+dfm_tfidf_mat <- dfm_tfidf(dfm_mat)
+dfm_tfidf_mat
+```
+```{r}
+tfidf_df <- convert(
+  dfm_tfidf_mat,
+  to = "data.frame"
+)
+tfidf_df
+```
+```{r}
+tfidf_long <- tfidf_df %>%
+  pivot_longer(
+    cols = -doc_id,
+    names_to = "word",
+    values_to = "tfidf"
+  ) %>%
+  filter(tfidf > 0)
+
+tfidf_long <- tfidf_long %>%
+  filter(doc_id %in% c("Circle of Commerce", "Free Trade"))
+tfidf_long
+```
+```{r}
+tfidf_sentiments <- tfidf_long %>%
+  inner_join(bing, by = "word") %>%
+  arrange(desc(tfidf))
+tfidf_sentiments
+```
+
+```{r}
+tfidf_sentiment_summary <- tfidf_sentiments %>%
+  group_by(doc_id) %>%
+  summarise(
+    positive_tfidf = sum(tfidf[sentiment == 'positive'], na.rm = TRUE),
+    negative_tfidf = sum(tfidf[sentiment == "negative"], na.rm = TRUE),
+    net_tfidf_sentiment = positive_tfidf - negative_tfidf,
+    .groups = "drop"
+    
+    
+  )
+tfidf_sentiment_summary
+```
+```{r}
+two_method_sentiment_comparison <- sentiment_summary %>%
+  left_join(
+    tfidf_sentiment_summary, 
+    by = c("doc_title" = "doc_id")
+  )
+two_method_sentiment_comparison
+```
+```{r}
+write.csv(
+  two_method_sentiment_comparison,
+  "sentiment_comparison.csv"
+)
+```
+
+```{r}
+tfidf_top_words <- tfidf_sentiments %>%
+  group_by(doc_id, sentiment) %>%
+  slice_max(
+    order_by = tfidf,
+    n = 5,
+    with_ties = FALSE
+  ) %>%
+  arrange(doc_id, sentiment, desc(tfidf)) %>%
+  select(doc_id, sentiment, word, tfidf)
+
+tfidf_top_words
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## Week 4 Tutorial
+```{r}
+library(tibble)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(quanteda)
+library(quanteda.textstats)
+```
+
+```{r}
+txt_circle <- read_file("texts/A07594__Circle_of_Commerce.txt")
+
+txt_free <- read_file("texts/B14801__Free_Trade.txt")
+
+txt_third <- read_file("texts/A06785.txt")
+```
+
+
+```{r}
+texts <- c(
+  "Circle_of_Commerce" = txt_circle,
+  "Free_Trade" = txt_free,
+  "Third_Text_A06785" = txt_third
+)
+
+corp <- corpus(texts)
+```
+
+
+```{r}
+toks <- tokens(
+  corp,
+  remove_punct = TRUE,
+  remove_numbers = TRUE,
+  remove_symbols = TRUE
+)
+
+toks <- tokens_tolower(toks)
+
+custom_stop <- c(
+  "vnto","haue","doo","hath","bee","ye","thee","hee","shall","hast","doe",
+  "beene","thereof","thus"
+)
+
+toks <- tokens_remove(toks, pattern = c(stopwords("en"), custom_stop))
+```
+
+
+```{r}
+dfm_mat <- dfm(toks)
+
+dfm_mat
+```
+
+```{r}
+topfeatures(dfm_mat, 25)
+```
+
+
+
+```{r}
+sim_cor <- textstat_simil(
+  dfm_mat,
+  method = "correlation",
+  margin = "documents"
+  
+)
+
+sim_cor
+```
+
+```{r}
+sim_cos <- textstat_simil(
+  dfm_mat,
+  method = "cosine",
+  margin = "documents"
+  
+)
+sim_cos
+```
+## Similarity Comparison
+The cosine similarity scores between the 3 articles show that the two texts by Misselden are more similar to each other than they are to Malynes's text. Between the two Misselden texts we got a cosine similarity score of 0.596, compared to 0.533 and 0.471 when comparing each of the Misselden texts to Malynes'. This result indicates that all 3 texts are generally similar in content, however, the speech patterns of Misselden might be the reason for the slightly more similar scores between his two documents.
+
+
+```{r}
+dfm_tfidf <- dfm_tfidf(dfm_mat)
+dfm_tfidf
+```
+```{r}
+topfeatures(dfm_tfidf, 20)
+```
+
+
+```{r}
+
+tfidf_mat = as.matrix(dfm_tfidf)
+tfidf_mat
+```
+```{r}
+circle_tfidf <- tfidf_mat["Circle_of_Commerce",]
+
+top_circle <- sort(circle_tfidf, decreasing = TRUE)[1:20]
+top_circle
+```
+```{r}
+free_tfidf <- tfidf_mat["Free_Trade", ]
+
+top_free <- sort(free_tfidf, decreasing = TRUE)[1:20]
+top_free
+```
+
+```{r}
+A06785_tfidf <- tfidf_mat["Third_Text_A06785",]
+
+top_A06785 <- sort(A06785_tfidf, decreasing = TRUE)[1:20]
+
+top_A06785
+```
+```{r}
+tfidf_top_tbl <- bind_rows(
+  tibble(document = "Circle of Commerce", term = names(top_circle), tfidf = unname(top_circle)),
+  tibble(document = "Free Trade",         term = names(top_free),   tfidf = unname(top_free)),
+  tibble(document = "Third Text",         term = names(top_A06785),  tfidf = unname(top_A06785))
+  
+)
+
+ggplot(tfidf_top_tbl, aes(x = tfidf, y = reorder(term, tfidf))) +
+  geom_col() +
+  facet_wrap(~ document, scales = "free_y") +
+  labs(
+    title = "Most Characteristic Terms by Document (TF–IDF)",
+    x = "TF–IDF score",
+    y = NULL
+  ) +
+  theme_minimal()
+```
+##Possible Issue
+Circle of Commerce is a much longer document which is why the terms in it seem to have much higher TFIDF scores. To fix this we could normalize term frequency so that longer texts don't dominate. Same argument could be made for the Malynes text.
+
+
+```{r}
+
+```
